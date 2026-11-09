@@ -1,0 +1,1 @@
+# Bid_Compliance_Verification_Platform
