@@ -1,0 +1,30 @@
+
+POST http://localhost:8080/api/bids
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="bidData"
+Content-Type: application/json
+
+{
+  "tenderId": 1,
+  "quotedPrice": 100000,
+  "bidderDetails": {
+    "name": "ABC Technologies",
+    "pan": "ABCDE1234F",
+    "gstin": "36ABCDE1234F1Z5",
+    "udyamNumber": "UDYAM-TS-00-1234567",
+    "address": "Hyderabad, Telangana"
+  }
+}
+--boundary
+Content-Disposition: form-data; name="documentTypes"
+Content-Type: text/plain
+
+PAN
+--boundary
+Content-Disposition: form-data; name="files"; filename="WT.pdf"
+Content-Type: application/pdf
+
+< /home/hemanth/WT.pdf
+--boundary--
