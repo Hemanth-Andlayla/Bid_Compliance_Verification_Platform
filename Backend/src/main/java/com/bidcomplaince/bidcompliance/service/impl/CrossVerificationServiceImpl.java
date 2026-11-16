@@ -127,6 +127,7 @@ public class CrossVerificationServiceImpl
 
         result.setBid(bid);
         result.setCheckedAt(Instant.now());
+        result.setStatus("PASS");
 
         /*
          * We initially assume PASS.
@@ -140,6 +141,8 @@ public class CrossVerificationServiceImpl
          * Otherwise:
          *     PASS
          */
+        result =
+                crossVerificationResultRepository.save(result);
 
         String overallStatus = "PASS";
 

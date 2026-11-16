@@ -1,8 +1,35 @@
+
 import axiosClient from './axiosClient';
 
 export const documentApi = {
-  getDocumentById: (id) => axiosClient.get(`/documents/${id}`),
-  getDocumentsByBidId: (bidId) => axiosClient.get(`/documents/bid/${bidId}`),
-};
 
-export default documentApi;
+  getDocumentsByBidId: async (bidId) => {
+
+    return await axiosClient.get(
+      `/documents/bid/${bidId}`
+    );
+
+  },
+
+
+  getDocumentById: async (documentId) => {
+
+    return await axiosClient.get(
+      `/documents/${documentId}`
+    );
+
+  },
+
+
+  getDocumentFile: async (documentId) => {
+
+    return await axiosClient.get(
+      `/documents/${documentId}/file`,
+      {
+        responseType: 'blob',
+      }
+    );
+
+  },
+
+};

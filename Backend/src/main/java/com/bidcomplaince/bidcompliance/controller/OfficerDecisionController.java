@@ -1,6 +1,8 @@
 package com.bidcomplaince.bidcompliance.controller;
-
-import com.bidcomplaince.bidcompliance.dto.officer.*;
+import com.bidcomplaince.bidcompliance.dto.officer.OfficerDecisionRequestDto;
+import com.bidcomplaince.bidcompliance.dto.officer.OfficerDecisionResponseDto;
+import com.bidcomplaince.bidcompliance.entity.User;
+import com.bidcomplaince.bidcompliance.service.CurrentUserService;
 import com.bidcomplaince.bidcompliance.service.OfficerDecisionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,18 +19,22 @@ public class OfficerDecisionController {
     private final OfficerDecisionService
             officerDecisionService;
 
+    private final CurrentUserService
+            currentUserService;
+
     @PostMapping("/bids/{bidId}/decision")
     public ResponseEntity<OfficerDecisionResponseDto>
     submitDecision(
             @PathVariable Long bidId,
             @Valid @RequestBody OfficerDecisionRequestDto request) {
 
-        Long officerId = 1L; // temporary
+        User currentUser =
+                currentUserService.getCurrentUser();
 
         return ResponseEntity.ok(
                 officerDecisionService.submitDecision(
                         bidId,
-                        officerId,
+                        currentUser.getId(),
                         request
                 )
         );

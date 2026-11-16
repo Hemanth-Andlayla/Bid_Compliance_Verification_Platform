@@ -59,11 +59,7 @@ CREATE TABLE tenders (
 );
 
 
-ALTER TABLE users
-    ADD COLUMN organization VARCHAR(255) NOT NULL;
 
-ALTER TABLE tenders
-    ADD COLUMN organization VARCHAR(255) NOT NULL;
 
 -- =========================================================
 -- 3. TENDER REQUIREMENTS

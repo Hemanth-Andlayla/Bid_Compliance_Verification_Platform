@@ -1,8 +1,13 @@
 package com.bidcomplaince.bidcompliance.service.impl;
-
 import com.bidcomplaince.bidcompliance.dto.ai.AiGeneratedResult;
 import com.bidcomplaince.bidcompliance.dto.ai.AiSummaryResponseDto;
-import com.bidcomplaince.bidcompliance.entity.*;
+import com.bidcomplaince.bidcompliance.entity.AiSummary;
+import com.bidcomplaince.bidcompliance.entity.Bid;
+import com.bidcomplaince.bidcompliance.entity.ComplianceResult;
+import com.bidcomplaince.bidcompliance.entity.CrossVerificationCheck;
+import com.bidcomplaince.bidcompliance.entity.CrossVerificationResult;
+import com.bidcomplaince.bidcompliance.entity.Document;
+import com.bidcomplaince.bidcompliance.entity.VerificationResult;
 import com.bidcomplaince.bidcompliance.repository.*;
 import com.bidcomplaince.bidcompliance.service.AiAnalysisService;
 import com.bidcomplaince.bidcompliance.service.AuditLogService;
@@ -12,9 +17,12 @@ import com.google.genai.types.GenerateContentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.bidcomplaince.bidcompliance.repository.CrossVerificationCheckRepository;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -27,41 +35,52 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private final CrossVerificationResultRepository crossVerificationResultRepository;
     private final VerificationResultRepository verificationResultRepository;
     private final AiSummaryRepository aiSummaryRepository;
-
+    private final CrossVerificationCheckRepository
+            crossVerificationCheckRepository;
     private final AuditLogService auditLogService;
 
     private final Client geminiClient;
     private final ObjectMapper objectMapper;
 
-    private static final String MODEL = "gemini-2.5-flash";
+    private static final String MODEL = "gemini-3.6-flash";
+
 
     @Override
     @Transactional
     public AiSummaryResponseDto analyzeBid(Long bidId) {
 
-        Bid bid = bidRepository.findById(bidId)
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "Bid not found with id: " + bidId
-                        ));
+        Bid bid =
+                bidRepository.findById(bidId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Bid not found with id: "
+                                                + bidId
+                                ));
+
 
         Map<String, Object> analysisData =
                 buildAnalysisData(bid);
 
+
         String prompt;
 
         try {
+
             String json =
-                    objectMapper.writeValueAsString(analysisData);
+                    objectMapper.writeValueAsString(
+                            analysisData
+                    );
 
             prompt = buildPrompt(json);
 
         } catch (Exception e) {
 
             throw new RuntimeException(
-                    "Failed to prepare AI analysis data", e
+                    "Failed to prepare AI analysis data",
+                    e
             );
         }
+
 
         GenerateContentResponse response =
                 geminiClient.models.generateContent(
@@ -70,7 +89,10 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                         null
                 );
 
-        String aiText = response.text();
+
+        String aiText =
+                response.text();
+
 
         AiGeneratedResult generatedResult;
 
@@ -91,13 +113,15 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             );
         }
 
+
         /*
          * Create a NEW AI summary.
          *
-         * The original ai_summaries table allows multiple
-         * summaries for the same bid, so we preserve history.
+         * The ai_summaries table allows multiple
+         * summaries for the same bid.
          */
-        AiSummary summary = new AiSummary();
+        AiSummary summary =
+                new AiSummary();
 
         summary.setBid(bid);
 
@@ -117,10 +141,16 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 generatedResult.getRecommendation()
         );
 
-        summary.setGeneratedAt(Instant.now());
+        summary.setGeneratedAt(
+                Instant.now()
+        );
+
 
         AiSummary saved =
-                aiSummaryRepository.save(summary);
+                aiSummaryRepository.save(
+                        summary
+                );
+
 
         auditLogService.log(
                 null,
@@ -130,8 +160,10 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 "AI summary generated for bid"
         );
 
+
         return toDto(saved);
     }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -140,60 +172,77 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
         AiSummary summary =
                 aiSummaryRepository
-                        .findTopByBidIdOrderByGeneratedAtDesc(bidId)
+                        .findTopByBidIdOrderByGeneratedAtDesc(
+                                bidId
+                        )
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "AI summary not found for bid: "
                                                 + bidId
                                 ));
 
+
         return toDto(summary);
     }
+
+
+    // --------------------------------------------------
+    // Build AI analysis data
+    // --------------------------------------------------
 
     private Map<String, Object> buildAnalysisData(
             Bid bid) {
 
-        Long bidId = bid.getId();
+        Long bidId =
+                bid.getId();
+
 
         Map<String, Object> data =
                 new LinkedHashMap<>();
+
 
         data.put(
                 "bid",
                 buildBidData(bid)
         );
 
+
         data.put(
                 "documents",
                 buildDocumentData(bidId)
         );
 
+
         data.put(
                 "complianceResults",
-                complianceResultRepository
-                        .findByBidId(bidId)
+                buildComplianceData(bidId)
         );
+
 
         crossVerificationResultRepository
                 .findByBidId(bidId)
                 .ifPresent(result ->
                         data.put(
                                 "crossVerification",
-                                result
+                                buildCrossVerificationData(
+                                        result
+                                )
                         ));
 
-        List<VerificationResult>
-                verificationResults =
-                verificationResultRepository
-                        .findByBidId(bidId);
 
         data.put(
                 "verificationResults",
-                verificationResults
+                buildVerificationData(bidId)
         );
+
 
         return data;
     }
+
+
+    // --------------------------------------------------
+    // Bid data
+    // --------------------------------------------------
 
     private Map<String, Object> buildBidData(
             Bid bid) {
@@ -201,20 +250,32 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         Map<String, Object> data =
                 new LinkedHashMap<>();
 
-        data.put("bidId", bid.getId());
+
+        data.put(
+                "bidId",
+                bid.getId()
+        );
+
 
         data.put(
                 "quotedPrice",
                 bid.getQuotedPrice()
         );
 
+
         data.put(
                 "status",
                 bid.getStatus()
         );
 
+
         return data;
     }
+
+
+    // --------------------------------------------------
+    // Document data
+    // --------------------------------------------------
 
     private List<Map<String, Object>>
     buildDocumentData(Long bidId) {
@@ -223,28 +284,35 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 documentRepository
                         .findByBidId(bidId);
 
+
         List<Map<String, Object>> result =
                 new ArrayList<>();
 
-        for (Document document : documents) {
+
+        for (Document document :
+                documents) {
 
             Map<String, Object> data =
                     new LinkedHashMap<>();
+
 
             data.put(
                     "documentId",
                     document.getId()
             );
 
+
             data.put(
                     "documentType",
                     document.getDocumentType()
             );
 
+
             data.put(
                     "fileName",
                     document.getFileName()
             );
+
 
             documentExtractionRepository
                     .findTopByDocumentIdOrderByExtractedAtDesc(
@@ -256,13 +324,282 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                                     extraction.getExtractedFields()
                             ));
 
+
             result.add(data);
         }
+
 
         return result;
     }
 
-    private String buildPrompt(String data) {
+
+    // --------------------------------------------------
+    // Compliance data
+    // --------------------------------------------------
+
+    private List<Map<String, Object>>
+    buildComplianceData(Long bidId) {
+
+        List<ComplianceResult> results =
+                complianceResultRepository
+                        .findByBidId(bidId);
+
+
+        List<Map<String, Object>> data =
+                new ArrayList<>();
+
+
+        for (ComplianceResult result :
+                results) {
+
+            Map<String, Object> item =
+                    new LinkedHashMap<>();
+
+
+            item.put(
+                    "status",
+                    result.getStatus()
+            );
+
+
+            item.put(
+                    "reason",
+                    result.getReason()
+            );
+
+
+            item.put(
+                    "checkedAt",
+                    result.getCheckedAt() != null
+                            ? result.getCheckedAt().toString()
+                            : null
+            );
+
+
+            if (result.getRequirement() != null) {
+
+                item.put(
+                        "requirementType",
+                        result
+                                .getRequirement()
+                                .getRequirementType()
+                );
+
+                item.put(
+                        "mandatory",
+                        result
+                                .getRequirement()
+                                .getMandatory()
+                );
+            }
+
+
+            if (result.getDocument() != null) {
+
+                item.put(
+                        "documentType",
+                        result
+                                .getDocument()
+                                .getDocumentType()
+                );
+            }
+
+
+            data.add(item);
+        }
+
+
+        return data;
+    }
+
+
+    // --------------------------------------------------
+    // Cross-verification data
+    // --------------------------------------------------
+
+
+    private Map<String, Object>
+    buildCrossVerificationData(
+            CrossVerificationResult result) {
+
+        Map<String, Object> data =
+                new LinkedHashMap<>();
+
+
+        data.put(
+                "status",
+                result.getStatus()
+        );
+
+        data.put(
+                "overallReason",
+                result.getOverallReason()
+        );
+
+        data.put(
+                "checkedAt",
+                result.getCheckedAt() != null
+                        ? result.getCheckedAt().toString()
+                        : null
+        );
+
+        List<CrossVerificationCheck> checks =
+                crossVerificationCheckRepository
+                        .findByCrossVerificationResultId(
+                                result.getId()
+                        );
+
+
+        List<Map<String, Object>> checkData =
+                new ArrayList<>();
+
+
+        for (CrossVerificationCheck check :
+                checks) {
+
+            Map<String, Object> item =
+                    new LinkedHashMap<>();
+
+
+            item.put(
+                    "checkType",
+                    check.getCheckType()
+            );
+
+            item.put(
+                    "sourceType",
+                    check.getSourceType()
+            );
+
+            item.put(
+                    "sourceReference",
+                    check.getSourceReference()
+            );
+
+            item.put(
+                    "targetType",
+                    check.getTargetType()
+            );
+
+            item.put(
+                    "targetReference",
+                    check.getTargetReference()
+            );
+
+            item.put(
+                    "value1",
+                    check.getValue1()
+            );
+
+            item.put(
+                    "value2",
+                    check.getValue2()
+            );
+
+            item.put(
+                    "status",
+                    check.getStatus()
+            );
+
+            item.put(
+                    "reason",
+                    check.getReason()
+            );
+
+
+            checkData.add(item);
+        }
+
+
+        data.put(
+                "checks",
+                checkData
+        );
+
+
+        return data;
+    }
+
+    // --------------------------------------------------
+    // Verification data
+    // --------------------------------------------------
+
+    private List<Map<String, Object>>
+    buildVerificationData(Long bidId) {
+
+        List<VerificationResult> results =
+                verificationResultRepository
+                        .findByBidId(bidId);
+
+
+        List<Map<String, Object>> data =
+                new ArrayList<>();
+
+
+        for (VerificationResult result :
+                results) {
+
+            Map<String, Object> item =
+                    new LinkedHashMap<>();
+
+
+            item.put(
+                    "status",
+                    result.getStatus()
+            );
+
+
+            item.put(
+                    "verificationSource",
+                    result.getVerificationSource()
+            );
+
+
+            item.put(
+                    "reason",
+                    result.getReason()
+            );
+
+
+            item.put(
+                    "verifiedData",
+                    result.getVerifiedData()
+            );
+
+
+            item.put(
+                    "verifiedAt",
+                    result.getVerifiedAt() != null
+                            ? result.getVerifiedAt().toString()
+                            : null
+            );
+
+
+            if (result.getDocument() != null) {
+
+                item.put(
+                        "documentType",
+                        result
+                                .getDocument()
+                                .getDocumentType()
+                );
+            }
+
+
+            data.add(item);
+        }
+
+
+        return data;
+    }
+
+
+    // --------------------------------------------------
+    // AI prompt
+    // --------------------------------------------------
+
+    private String buildPrompt(
+            String data) {
 
         return """
                 You are an AI decision-support assistant for a
@@ -270,7 +607,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
                 You are NOT the final decision maker.
 
-                The officer will make the final decision.
+                The procurement officer will make the final decision.
 
                 Analyze ONLY the information supplied below.
 
@@ -288,7 +625,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 only with respect to the result already returned
                 by the verification service.
 
-                Your task is to summarize the bid for a government
+                Your task is to summarize the bid for a
                 procurement officer.
 
                 Return ONLY valid JSON.
@@ -331,6 +668,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 %s
                 """.formatted(data);
     }
+
+
+    // --------------------------------------------------
+    // DTO conversion
+    // --------------------------------------------------
 
     private AiSummaryResponseDto toDto(
             AiSummary summary) {

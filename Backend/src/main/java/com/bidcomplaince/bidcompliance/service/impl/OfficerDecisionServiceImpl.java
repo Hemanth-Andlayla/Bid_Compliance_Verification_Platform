@@ -109,8 +109,8 @@ public class OfficerDecisionServiceImpl
     private void validateDecision(String decision) {
 
         if (decision == null ||
-                (!decision.equals("APPROVE")
-                        && !decision.equals("REJECT")
+                (!decision.equals("ACCEPTED")
+                        && !decision.equals("REJECTED")
                         && !decision.equals(
                         "REQUEST_CLARIFICATION"))) {
 
